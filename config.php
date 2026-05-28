@@ -10,7 +10,6 @@
 // DATABASE CONFIGURATION
 // Change host/dbname/username/password to match your setup
 // ----------------------------------------------------------
-// Check if running on localhost (local development)
 $isLocal = in_array($_SERVER['HTTP_HOST'], ['localhost', '127.0.0.1']) || (strpos($_SERVER['HTTP_HOST'], 'localhost:') === 0);
 
 if ($isLocal) {
@@ -33,5 +32,8 @@ foreach (glob(__DIR__ . '/classes/*.php') as $file) {
     require_once $file;
 }
 
+// ----------------------------------------------------------
+// CREATE THE DATABASE CONNECTION (single shared instance)
+// ----------------------------------------------------------
 $database = new Database($config);
 $conn     = $database->getConnection();

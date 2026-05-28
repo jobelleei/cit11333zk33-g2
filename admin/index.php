@@ -13,40 +13,12 @@ if (isset($logged_in_user['id'])) {
     $student = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-// Fallback if the session has username instead of ID
 if (!$student && isset($logged_in_user['username'])) {
     $stmt = $conn->prepare("SELECT * FROM users WHERE username = :username LIMIT 1");
     $stmt->execute([
         ':username' => $logged_in_user['username']
     ]);
     $student = $stmt->fetch(PDO::FETCH_ASSOC);
-}
-
-// Prevent errors if no student was found
-if (!$student) {
-    $student = [
-        'id' => '',
-        'student_no' => '',
-        'name' => '',
-        'username' => '',
-        'password' => '',
-        'birthdate' => '',
-        'age' => '',
-        'gender' => '',
-        'address' => '',
-        'email' => '',
-        'phone' => '',
-        'guardian' => '',
-        'guardian_rel' => '',
-        'guardian_contact' => '',
-        'grade' => '',
-        'section' => '',
-        'track' => '',
-        'strand' => '',
-        'gpa' => '',
-        'status' => '',
-        'enrolled_at' => ''
-    ];
 }
 
 function displayDate($date)

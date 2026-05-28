@@ -1,5 +1,5 @@
 <?php
-require 'auth.php';   // blocks access if not logged in
+require 'auth.php';
 require_once '../config.php';
 
 $success_message = '';
@@ -13,28 +13,12 @@ if (!$user_id && isset($logged_in_user['username'])) {
     $user_id = $userStmt->fetchColumn();
 }
 
-$display_user_id = $user_id;
-
-$checkGradeStmt = $conn->prepare("SELECT COUNT(*) FROM grades WHERE user_id = :user_id");
-$checkGradeStmt->execute([':user_id' => $display_user_id]);
-$user_grade_count = (int) $checkGradeStmt->fetchColumn();
-
-if ($user_grade_count === 0) {
-    $fallbackGradeStmt = $conn->prepare("
-        SELECT user_id
-        FROM grades
-        ORDER BY user_id ASC
-        LIMIT 1
-    ");
-    $fallbackGradeStmt->execute();
-    $fallback_user_id = $fallbackGradeStmt->fetchColumn();
-
-    if ($fallback_user_id) {
-        $display_user_id = $fallback_user_id;
-    }
+if (!$user_id) {
+    $userStmt = $conn->prepare("SELECT id FROM users ORDER BY id ASC LIMIT 1");
+    $userStmt->execute();
+    $user_id = $userStmt->fetchColumn();
 }
 
-// Fetch subjects from database for the subject dropdown
 $subjectStmt = $conn->prepare("
     SELECT name 
     FROM subjects 
@@ -42,7 +26,7 @@ $subjectStmt = $conn->prepare("
     ORDER BY name ASC
 ");
 $subjectStmt->execute([
-    ':user_id' => $display_user_id
+    ':user_id' => $user_id
 ]);
 $subjects = $subjectStmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -50,7 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'add';
 
     if ($action === 'add') {
-        // --- ADD ---
         $new_subject = trim($_POST['subject']);
         $new_prelim  = (int) $_POST['prelim'];
         $new_midterm = (int) $_POST['midterm'];
@@ -64,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
 
             $stmt->execute([
-                ':user_id' => $display_user_id,
+                ':user_id' => $user_id,
                 ':subject' => $new_subject,
                 ':prelim'  => $new_prelim,
                 ':midterm' => $new_midterm,
@@ -96,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     midterm = :midterm,
                     final = :final,
                     grade = :grade
-                WHERE id = :id
+                WHERE id = :id AND user_id = :user_id
             ");
 
             $stmt->execute([
@@ -106,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':final'   => $edit_final,
                 ':grade'   => $edit_grade,
                 ':id'      => $edit_id,
+                ':user_id' => $user_id,
             ]);
 
             $_SESSION['flash'] = "Grade for \"$edit_subject\" updated. Final grade: $edit_grade";
@@ -117,17 +101,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete') {
-        // --- DELETE ---
         $delete_id = (int) $_POST['grade_id'];
 
         try {
             $stmt = $conn->prepare("
                 DELETE FROM grades
-                WHERE id = :id
+                WHERE id = :id AND user_id = :user_id
             ");
 
             $stmt->execute([
-                ':id' => $delete_id,
+                ':id'      => $delete_id,
+                ':user_id' => $user_id,
             ]);
 
             $_SESSION['flash'] = "Grade record has been deleted.";
@@ -144,7 +128,6 @@ if (isset($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-// Fetch grades from database
 $stmt = $conn->prepare("
     SELECT id, user_id, subject, prelim, midterm, final, grade
     FROM grades
@@ -152,7 +135,7 @@ $stmt = $conn->prepare("
     ORDER BY id ASC
 ");
 $stmt->execute([
-    ':user_id' => $display_user_id
+    ':user_id' => $user_id
 ]);
 $grades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

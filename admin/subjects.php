@@ -1,50 +1,58 @@
 <?php
 require 'auth.php';
-
-if (!isset($_SESSION['subjects'])) {
-    $_SESSION['subjects'] = [
-        ["id" => 1, "code" => "MATH101", "name" => "General Mathematics",    "teacher" => "Mr. Batumbakal",    "units" => 4, "schedule" => "MWF 7:30–8:30"],
-        ["id" => 2, "code" => "ENG101",  "name" => "Oral Communication",     "teacher" => "Ms. Flores",        "units" => 2, "schedule" => "TTH 9:00–10:00"],
-        ["id" => 3, "code" => "SCI101",  "name" => "Earth and Life Science", "teacher" => "Ms. Lim",           "units" => 4, "schedule" => "MWF 10:00–11:00"],
-        ["id" => 4, "code" => "FIL101",  "name" => "Komunikasyon",           "teacher" => "Mr. Ramos",         "units" => 2, "schedule" => "TTH 1:00–2:00"],
-        ["id" => 5, "code" => "PE101",   "name" => "Physical Education",     "teacher" => "Coach Delos Reyes", "units" => 2, "schedule" => "WF 2:00–3:00"],
-        ["id" => 6, "code" => "HIST101", "name" => "Philippine History",     "teacher" => "Ms. Bautista",      "units" => 3, "schedule" => "MWF 1:00–2:00"],
-    ];
-}
+require_once '../config.php';
 
 $success_message = '';
+$error_message = '';
+
+$user_id = $logged_in_user['id'] ?? null;
+
+if (!$user_id && isset($logged_in_user['username'])) {
+    $userStmt = $conn->prepare("SELECT id FROM users WHERE username = :username LIMIT 1");
+    $userStmt->execute([':username' => $logged_in_user['username']]);
+    $user_id = $userStmt->fetchColumn();
+}
+
+if (!$user_id) {
+    $userStmt = $conn->prepare("SELECT id FROM users ORDER BY id ASC LIMIT 1");
+    $userStmt->execute();
+    $user_id = $userStmt->fetchColumn();
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'add';
 
     if ($action === 'add') {
-        // --- ADD ---
         $new_code     = strtoupper(trim($_POST['code']));
         $new_name     = trim($_POST['name']);
         $new_teacher  = trim($_POST['teacher']);
         $new_units    = (int) $_POST['units'];
         $new_schedule = trim($_POST['schedule']);
 
-        $last_id = count($_SESSION['subjects']) > 0
-                   ? max(array_column($_SESSION['subjects'], 'id'))
-                   : 0;
+        try {
+            $stmt = $conn->prepare("
+                INSERT INTO subjects (user_id, code, name, teacher, units, schedule)
+                VALUES (:user_id, :code, :name, :teacher, :units, :schedule)
+            ");
 
-        $_SESSION['subjects'][] = [
-            "id"       => $last_id + 1,
-            "code"     => $new_code,
-            "name"     => $new_name,
-            "teacher"  => $new_teacher,
-            "units"    => $new_units,
-            "schedule" => $new_schedule,
-        ];
+            $stmt->execute([
+                ':user_id'  => $user_id,
+                ':code'     => $new_code,
+                ':name'     => $new_name,
+                ':teacher'  => $new_teacher,
+                ':units'    => $new_units,
+                ':schedule' => $new_schedule,
+            ]);
 
-        $_SESSION['flash'] = "\"$new_name\" has been added to your subjects.";
-        header('Location: subjects.php');
-        exit;
+            $_SESSION['flash'] = "\"$new_name\" has been added to your subjects.";
+            header('Location: subjects.php');
+            exit;
+        } catch (PDOException $e) {
+            $error_message = "Add failed: " . $e->getMessage();
+        }
     }
 
     if ($action === 'edit') {
-        // --- EDIT ---
         $edit_id       = (int) $_POST['subject_id'];
         $edit_code     = strtoupper(trim($_POST['code']));
         $edit_name     = trim($_POST['name']);
@@ -52,39 +60,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $edit_units    = (int) $_POST['units'];
         $edit_schedule = trim($_POST['schedule']);
 
-        foreach ($_SESSION['subjects'] as &$subject) {
-            if ($subject['id'] === $edit_id) {
-                $subject['code']     = $edit_code;
-                $subject['name']     = $edit_name;
-                $subject['teacher']  = $edit_teacher;
-                $subject['units']    = $edit_units;
-                $subject['schedule'] = $edit_schedule;
-                break;
-            }
-        }
-        unset($subject);
+        try {
+            $stmt = $conn->prepare("
+                UPDATE subjects
+                SET code = :code,
+                    name = :name,
+                    teacher = :teacher,
+                    units = :units,
+                    schedule = :schedule
+                WHERE id = :id AND user_id = :user_id
+            ");
 
-        $_SESSION['flash'] = "\"$edit_name\" has been updated.";
-        header('Location: subjects.php');
-        exit;
+            $stmt->execute([
+                ':code'     => $edit_code,
+                ':name'     => $edit_name,
+                ':teacher'  => $edit_teacher,
+                ':units'    => $edit_units,
+                ':schedule' => $edit_schedule,
+                ':id'       => $edit_id,
+                ':user_id'  => $user_id,
+            ]);
+
+            $_SESSION['flash'] = "\"$edit_name\" has been updated.";
+            header('Location: subjects.php');
+            exit;
+        } catch (PDOException $e) {
+            $error_message = "Update failed: " . $e->getMessage();
+        }
     }
 
     if ($action === 'delete') {
-        // --- DELETE ---
         $delete_id = (int) $_POST['subject_id'];
 
-        foreach ($_SESSION['subjects'] as $key => $subject) {
-            if ($subject['id'] === $delete_id) {
-                unset($_SESSION['subjects'][$key]);
-                break;
-            }
+        try {
+            $stmt = $conn->prepare("
+                DELETE FROM subjects
+                WHERE id = :id AND user_id = :user_id
+            ");
+
+            $stmt->execute([
+                ':id'      => $delete_id,
+                ':user_id' => $user_id,
+            ]);
+
+            $_SESSION['flash'] = "Subject has been deleted.";
+            header('Location: subjects.php');
+            exit;
+        } catch (PDOException $e) {
+            $error_message = "Delete failed: " . $e->getMessage();
         }
-
-        $_SESSION['subjects'] = array_values($_SESSION['subjects']);
-
-        $_SESSION['flash'] = "Subject has been deleted.";
-        header('Location: subjects.php');
-        exit;
     }
 }
 
@@ -93,7 +117,15 @@ if (isset($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-$subjects       = $_SESSION['subjects'];
+$stmt = $conn->prepare("
+    SELECT id, user_id, code, name, teacher, units, schedule
+    FROM subjects
+    WHERE user_id = :user_id
+    ORDER BY id ASC
+");
+$stmt->execute([':user_id' => $user_id]);
+$subjects = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 $total_subjects = count($subjects);
 $total_units    = array_sum(array_column($subjects, 'units'));
 
@@ -105,6 +137,12 @@ include 'header.php';
 
 <?php if ($success_message): ?>
 <div class="alert-success">✅ <?= htmlspecialchars($success_message) ?></div>
+<?php endif; ?>
+
+<?php if ($error_message): ?>
+<div class="alert-success" style="background:#fee2e2; color:#991b1b;">
+    <?= htmlspecialchars($error_message) ?>
+</div>
 <?php endif; ?>
 
 <div class="stats-row">
