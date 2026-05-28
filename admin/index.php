@@ -7,15 +7,15 @@ require 'auth.php';
 $student = [
     'id'       => $_SESSION['user']['id'],
     'name'     => $_SESSION['user']['name'],
-    'birthdate'=> '2008-03-15',
-    'age'      => 16,
-    'gender'   => 'Male',
-    'address'  => 'Purok Sulom 2, Barangay Villamonte, Bacolod City',
+    'birthdate'=> '2004-04-15',
+    'age'      => 22,
+    'gender'   => 'FEMALE',
+    'address'  => 'Purok 12, Barangay 12, Iloilo City',
     'email'    => $_SESSION['user']['username'] . '@school.edu.ph',
-    'phone'    => '09093947266',
-    'guardian' => 'Martin Hamada',
+    'phone'    => '01287671312',
+    'guardian' => 'Joebelle Hamada',
     'guardian_rel'     => 'Father',
-    'guardian_contact' => '09189876543',
+    'guardian_contact' => '091273126412',
     'status'   => 'Active',
 ];
 

@@ -1,6 +1,6 @@
-<!-- ↑↑↑ PAGE CONTENT ABOVE ↑↑↑ -->
+
         </main>
-    </div><!-- /.main -->
-</div><!-- /.layout -->
+    </div>
+</div>
 </body>
 </html>

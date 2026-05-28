@@ -1,93 +1,61 @@
 <?php
 require 'auth.php';
-require_once '../config.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/classes/Grade.php';
 
-$gradeModel = new Grade($conn);
-$subjectModel = new Subject($conn);
-
+$gradeModel = new Grade();
 $success_message = '';
-$error_message = '';
-
-$user_id = $logged_in_user['id'] ?? null;
-
-if (!$user_id && isset($logged_in_user['username'])) {
-    $userModel = new User($conn);
-    $user = $userModel->findByUsername($logged_in_user['username']);
-    $user_id = $user['id'] ?? null;
-}
-
-if (!$user_id) {
-    header('Location: ../index.php');
-    exit;
-}
-
-$subjects = $subjectModel->getAllByUser($user_id);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? 'add';
+    if (isset($_POST['action'])) {
+        $action = $_POST['action'];
 
-    if ($action === 'add') {
-        $new_subject = trim($_POST['subject']);
-        $new_prelim  = (int) $_POST['prelim'];
-        $new_midterm = (int) $_POST['midterm'];
-        $new_final   = (int) $_POST['final'];
-        $new_grade   = round(($new_prelim + $new_midterm + $new_final) / 3);
+        if ($action === 'add') {
+            $new_subject = trim($_POST['subject']);
+            $new_prelim  = (int) $_POST['prelim'];
+            $new_midterm = (int) $_POST['midterm'];
+            $new_final   = (int) $_POST['final'];
+            $new_grade   = round(($new_prelim + $new_midterm + $new_final) / 3);
+            $new_remarks = $new_grade >= 75 ? 'Passed' : 'Failed';
 
-        try {
-            $gradeModel->create([
-                'user_id' => $user_id,
+            $gradeModel->add([
                 'subject' => $new_subject,
-                'prelim'  => $new_prelim,
+                'prelim' => $new_prelim,
                 'midterm' => $new_midterm,
-                'final'   => $new_final,
-                'grade'   => $new_grade,
+                'final' => $new_final,
+                'grade' => $new_grade,
+                'remarks' => $new_remarks,
+                'status' => 'Active',
             ]);
 
-            $_SESSION['flash'] = "Grade for \"$new_subject\" added. Final grade: $new_grade";
-            header('Location: grades.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Add failed: " . $e->getMessage();
-        }
-    }
+            $_SESSION['flash'] = '"' . $new_subject . '" grade added successfully.';
+        } elseif ($action === 'edit') {
+            $edit_id = (int) $_POST['edit_id'];
+            $edit_subject = trim($_POST['subject']);
+            $edit_prelim = (int) $_POST['prelim'];
+            $edit_midterm = (int) $_POST['midterm'];
+            $edit_final = (int) $_POST['final'];
+            $edit_grade = round(($edit_prelim + $edit_midterm + $edit_final) / 3);
+            $edit_remarks = $edit_grade >= 75 ? 'Passed' : 'Failed';
 
-    if ($action === 'edit') {
-        $edit_id      = (int) $_POST['grade_id'];
-        $edit_subject = trim($_POST['subject']);
-        $edit_prelim  = (int) $_POST['prelim'];
-        $edit_midterm = (int) $_POST['midterm'];
-        $edit_final   = (int) $_POST['final'];
-        $edit_grade   = round(($edit_prelim + $edit_midterm + $edit_final) / 3);
-
-        try {
-            $gradeModel->updateByUser($edit_id, $user_id, [
+            $gradeModel->update($edit_id, [
                 'subject' => $edit_subject,
-                'prelim'  => $edit_prelim,
+                'prelim' => $edit_prelim,
                 'midterm' => $edit_midterm,
-                'final'   => $edit_final,
-                'grade'   => $edit_grade,
+                'final' => $edit_final,
+                'grade' => $edit_grade,
+                'remarks' => $edit_remarks,
             ]);
 
-            $_SESSION['flash'] = "Grade for \"$edit_subject\" updated. Final grade: $edit_grade";
-            header('Location: grades.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Update failed: " . $e->getMessage();
+            $_SESSION['flash'] = '"' . $edit_subject . '" grade updated successfully.';
+        } elseif ($action === 'delete') {
+            $delete_id = (int) $_POST['delete_id'];
+            $gradeModel->delete($delete_id);
+            $_SESSION['flash'] = 'Grade record deleted successfully.';
         }
-    }
 
-    if ($action === 'delete') {
-        $delete_id = (int) $_POST['grade_id'];
-
-        try {
-            $gradeModel->deleteByUser($delete_id, $user_id);
-
-            $_SESSION['flash'] = "Grade record has been deleted.";
-            header('Location: grades.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Delete failed: " . $e->getMessage();
-        }
+        header('Location: grades.php');
+        exit;
     }
 }
 
@@ -96,14 +64,22 @@ if (isset($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-$grades = $gradeModel->getAllByUser($user_id);
+// Pagination
+$perPage = 5;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$offset = ($page - 1) * $perPage;
 
-$count      = count($grades);
-$all_grades = array_column($grades, 'grade');
-$avg_grade  = $count > 0 ? round(array_sum($all_grades) / $count, 1) : 0;
-$highest    = $count > 0 ? max($all_grades) : 0;
-$lowest     = $count > 0 ? min($all_grades) : 0;
+$grades = $gradeModel->getAll($perPage, $offset);
+$total_grades = $gradeModel->countAll();
+$s = $gradeModel->stats();
+$avg_grade = isset($s['avg_grade']) ? round($s['avg_grade'], 1) : 0;
+$highest = isset($s['highest']) ? (int)$s['highest'] : 0;
+$lowest = isset($s['lowest']) ? (int)$s['lowest'] : 0;
 
+
+// ----------------------------------------------------------
+// PAGE TITLES
+// ----------------------------------------------------------
 $active_page = 'grades';
 $page_title  = 'My Grades';
 $page_icon   = '<i class="bi bi-trophy-fill"></i>';
@@ -111,261 +87,248 @@ $page_icon   = '<i class="bi bi-trophy-fill"></i>';
 include 'header.php';
 ?>
 
-<main class="content">
-    <?php if ($success_message): ?>
-    <div class="alert-success">✅ <?= htmlspecialchars($success_message) ?></div>
+<?php if (!empty($success_message)): ?>
+<div class="alert-success"> <?= htmlspecialchars($success_message) ?></div>
+<?php endif; ?>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Avg Grade</div>
+        <div class="stat-value blue"><?= $avg_grade ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Highest</div>
+        <div class="stat-value green"><?= $highest ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Lowest</div>
+        <div class="stat-value red"><?= $lowest ?></div>
+    </div>
+</div>
+
+<div style="margin-bottom: 24px;">
+    <button type="button" class="btn-add" onclick="openModal()">
+        <i class="bi bi-plus-square"></i> Add Grade Record
+    </button>
+</div>
+
+<div class="table-card">
+    <div class="table-card-header">
+        <div class="table-card-title">Grade Report – 1st Semester</div>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Subject</th>
+                <th>Prelim</th>
+                <th>Midterm</th>
+                <th>Final Exam</th>
+                <th>Final Grade</th>
+                <th>Remarks</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($grades)): ?>
+            <tr>
+                <td colspan="8" style="text-align:center; padding:24px; color:var(--text-muted);">
+                    No grade records yet. Use the form above to add one.
+                </td>
+            </tr>
+            <?php endif; ?>
+            <?php foreach ($grades as $i => $g): ?>
+            <tr>
+                <td class="id-cell"><?= $offset + $i + 1 ?></td>
+                <td><?= htmlspecialchars($g['subject']) ?></td>
+                <td class="id-cell"><?= $g['prelim'] ?></td>
+                <td class="id-cell"><?= $g['midterm'] ?></td>
+                <td class="id-cell"><?= $g['final'] ?></td>
+                <td>
+                    <?php 
+                    $fg = $g['grade'];
+                    $gc = $fg >= 90 ? 'grade-high' : ($fg >= 85 ? 'grade-mid' : 'grade-low'); 
+                    ?>
+                    <span class="<?= $gc ?>"><?= $fg ?></span>
+                </td>
+                <td>
+                    <span class="badge <?= $g['remarks'] === 'Passed' ? 'badge-active' : 'badge-probation' ?>">
+                        <?= $g['remarks'] ?>
+                    </span>
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button type="button" class="btn-action btn-edit" onclick="editGrade(<?= $g['id'] ?>)">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button type="button" class="btn-action btn-delete"
+                            onclick="deleteGrade(<?= $g['id'] ?>, '<?= htmlspecialchars($g['subject']) ?>')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+<?php if ($total_grades > $perPage):
+        $totalPages = (int) ceil($total_grades / $perPage);
+    ?>
+<div class="pagination">
+    <?php if ($page > 1): ?>
+    <a class="page-link" href="?page=<?= $page - 1 ?>">&laquo; Prev</a>
     <?php endif; ?>
 
-    <?php if ($error_message): ?>
-    <div class="alert-success" style="background:#fee2e2; color:#991b1b;">
-        <?= htmlspecialchars($error_message) ?>
-    </div>
+    <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+    <?php if ($p === $page): ?>
+    <span class="page-link current"><?= $p ?></span>
+    <?php else: ?>
+    <a class="page-link" href="?page=<?= $p ?>"><?= $p ?></a>
     <?php endif; ?>
+    <?php endfor; ?>
 
-    <div class="stats-row">
-        <div class="stat-card">
-            <div class="stat-label">Avg Grade</div>
-            <div class="stat-value blue"><?= htmlspecialchars($avg_grade) ?></div>
+    <?php if ($page < $totalPages): ?>
+    <a class="page-link" href="?page=<?= $page + 1 ?>">Next &raquo;</a>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- Hidden forms for actions -->
+<form id="deleteForm" method="POST" action="" style="display: none;">
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="delete_id" value="">
+</form>
+
+<!-- Add Grade Modal -->
+<div id="addGradeModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Add Grade Record</h2>
+            <button type="button" class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-
-        <div class="stat-card">
-            <div class="stat-label">Highest</div>
-            <div class="stat-value green"><?= htmlspecialchars($highest) ?></div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-label">Lowest</div>
-            <div class="stat-value red"><?= htmlspecialchars($lowest) ?></div>
-        </div>
-    </div>
-
-    <div class="form-card">
-        <div class="form-card-header">
-            <div class="form-card-title">Add Grade Record</div>
-        </div>
-
-        <div class="form-body">
+        <div class="modal-body">
             <p class="form-hint">Final Grade is auto-computed: (Prelim + Midterm + Final Exam) ÷ 3</p>
-
             <form method="POST" action="">
                 <input type="hidden" name="action" value="add">
-
                 <div class="form-grid">
                     <div class="form-group" style="grid-column: span 2;">
                         <label for="subject">Subject Name</label>
-
-                        <?php if (count($subjects) > 0): ?>
-                        <select id="subject" name="subject" required>
-                            <option value="">— Select Subject —</option>
-                            <?php foreach ($subjects as $subject): ?>
-                            <option value="<?= htmlspecialchars($subject['name']) ?>">
-                                <?= htmlspecialchars($subject['name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <?php else: ?>
-                        <input type="text" id="subject" name="subject"
-                            placeholder="No subjects found. Add subjects first." required>
-                        <?php endif; ?>
+                        <input type="text" id="subject" name="subject" placeholder="e.g. Statistics and Probability"
+                            required>
                     </div>
-
                     <div class="form-group">
                         <label for="prelim">Prelim Score</label>
                         <input type="number" id="prelim" name="prelim" min="0" max="100" placeholder="0 – 100" required>
                     </div>
-
                     <div class="form-group">
                         <label for="midterm">Midterm Score</label>
                         <input type="number" id="midterm" name="midterm" min="0" max="100" placeholder="0 – 100"
                             required>
                     </div>
-
                     <div class="form-group">
                         <label for="final">Final Exam Score</label>
                         <input type="number" id="final" name="final" min="0" max="100" placeholder="0 – 100" required>
                     </div>
                 </div>
-
                 <button type="submit" class="btn-submit"><i class="bi bi-plus-square"></i> Add Grade Record</button>
             </form>
         </div>
     </div>
+</div>
 
-    <div class="table-card">
-        <div class="table-card-header">
-            <div class="table-card-title">Grade Report – 1st Semester</div>
+<!-- Edit Grade Modal -->
+<div id="editGradeModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Edit Grade Record</h2>
+            <button type="button" class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Subject</th>
-                    <th>Prelim</th>
-                    <th>Midterm</th>
-                    <th>Final Exam</th>
-                    <th>Final Grade</th>
-                    <th>Remarks</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                <?php if ($count === 0): ?>
-                <tr>
-                    <td colspan="8" style="text-align:center; padding:24px; color:var(--text-muted);">
-                        No grades yet. Use the form above to add one.
-                    </td>
-                </tr>
-                <?php endif; ?>
-
-                <?php foreach ($grades as $i => $g): ?>
-                <tr>
-                    <td class="id-cell"><?= $i + 1 ?></td>
-                    <td><?= htmlspecialchars($g['subject']) ?></td>
-                    <td class="id-cell"><?= htmlspecialchars($g['prelim']) ?></td>
-                    <td class="id-cell"><?= htmlspecialchars($g['midterm']) ?></td>
-                    <td class="id-cell"><?= htmlspecialchars($g['final']) ?></td>
-                    <td>
-                        <?php
-                        $fg = $g['grade'];
-                        $gc = $fg >= 90 ? 'grade-high' : ($fg >= 85 ? 'grade-mid' : 'grade-low');
-                        ?>
-                        <span class="<?= $gc ?>"><?= htmlspecialchars($fg) ?></span>
-                    </td>
-                    <td>
-                        <span class="badge <?= $fg >= 75 ? 'badge-active' : 'badge-probation' ?>">
-                            <?= $fg >= 75 ? 'Passed' : 'Failed' ?>
-                        </span>
-                    </td>
-                    <td>
-                        <button type="button" class="btn-submit" style="width:auto; padding:8px 14px; margin-right:5px;"
-                            onclick='openEditGradeModal(<?= json_encode($g) ?>)'>
-                            Edit
-                        </button>
-
-                        <form method="POST" action="" style="display:inline;"
-                            onsubmit="return confirm('Are you sure you want to delete this grade record?');">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="grade_id" value="<?= htmlspecialchars($g['id']) ?>">
-                            <button type="submit" class="btn-submit" style="width:auto; padding:8px 14px;">
-                                Delete
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div id="editGradeModal" class="custom-modal">
-        <div class="custom-modal-content">
-            <div class="custom-modal-header">
-                <div class="form-card-title">Edit Grade Record</div>
-                <button type="button" class="custom-modal-close" onclick="closeEditGradeModal()">&times;</button>
-            </div>
-
-            <form method="POST" action="">
+        <div class="modal-body">
+            <p class="form-hint">Final Grade is auto-computed: (Prelim + Midterm + Final Exam) ÷ 3</p>
+            <form method="POST" action="" id="editForm">
                 <input type="hidden" name="action" value="edit">
-                <input type="hidden" id="edit_grade_id" name="grade_id">
-
+                <input type="hidden" name="edit_id" id="edit_id">
                 <div class="form-grid">
                     <div class="form-group" style="grid-column: span 2;">
                         <label for="edit_subject">Subject Name</label>
-
-                        <?php if (count($subjects) > 0): ?>
-                        <select id="edit_subject" name="subject" required>
-                            <option value="">— Select Subject —</option>
-                            <?php foreach ($subjects as $subject): ?>
-                            <option value="<?= htmlspecialchars($subject['name']) ?>">
-                                <?= htmlspecialchars($subject['name']) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <?php else: ?>
-                        <input type="text" id="edit_subject" name="subject" required>
-                        <?php endif; ?>
+                        <input type="text" id="edit_subject" name="subject"
+                            placeholder="e.g. Statistics and Probability" required>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_prelim">Prelim Score</label>
-                        <input type="number" id="edit_prelim" name="prelim" min="0" max="100" required>
+                        <input type="number" id="edit_prelim" name="prelim" min="0" max="100" placeholder="0 – 100"
+                            required>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_midterm">Midterm Score</label>
-                        <input type="number" id="edit_midterm" name="midterm" min="0" max="100" required>
+                        <input type="number" id="edit_midterm" name="midterm" min="0" max="100" placeholder="0 – 100"
+                            required>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_final">Final Exam Score</label>
-                        <input type="number" id="edit_final" name="final" min="0" max="100" required>
+                        <input type="number" id="edit_final" name="final" min="0" max="100" placeholder="0 – 100"
+                            required>
                     </div>
                 </div>
-
-                <button type="submit" class="btn-submit"><i class="bi bi-pencil-square"></i> Update Grade
-                    Record</button>
+                <button type="submit" class="btn-submit"><i class="bi bi-check-circle"></i> Update Grade Record</button>
             </form>
         </div>
     </div>
-</main>
-
-<style>
-.custom-modal {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-
-.custom-modal-content {
-    background: #fff;
-    width: 100%;
-    max-width: 700px;
-    border-radius: 16px;
-    padding: 20px;
-}
-
-.custom-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.custom-modal-close {
-    border: none;
-    background: transparent;
-    font-size: 28px;
-    cursor: pointer;
-}
-</style>
+</div>
 
 <script>
-function openEditGradeModal(grade) {
-    document.getElementById('edit_grade_id').value = grade.id;
-    document.getElementById('edit_subject').value = grade.subject;
-    document.getElementById('edit_prelim').value = grade.prelim;
-    document.getElementById('edit_midterm').value = grade.midterm;
-    document.getElementById('edit_final').value = grade.final;
-
-    document.getElementById('editGradeModal').style.display = 'flex';
+function openModal() {
+    document.getElementById('addGradeModal').classList.add('show');
 }
 
-function closeEditGradeModal() {
-    document.getElementById('editGradeModal').style.display = 'none';
+function closeModal() {
+    document.getElementById('addGradeModal').classList.remove('show');
+    document.getElementById('editGradeModal').classList.remove('show');
 }
 
-window.addEventListener('click', function(event) {
-    const modal = document.getElementById('editGradeModal');
+function editGrade(id) {
+    // Find the grade data
+    <?php foreach ($grades as $grade): ?>
+    if (<?= $grade['id'] ?> === id) {
+        document.getElementById('edit_id').value = '<?= $grade['id'] ?>';
+        document.getElementById('edit_subject').value = '<?= htmlspecialchars($grade['subject']) ?>';
+        document.getElementById('edit_prelim').value = '<?= $grade['prelim'] ?>';
+        document.getElementById('edit_midterm').value = '<?= $grade['midterm'] ?>';
+        document.getElementById('edit_final').value = '<?= $grade['final'] ?>';
+    }
+    <?php endforeach; ?>
 
-    if (event.target === modal) {
-        closeEditGradeModal();
+    document.getElementById('editGradeModal').classList.add('show');
+}
+
+function deleteGrade(id, subject) {
+    if (confirm('Are you sure you want to delete "' + subject + '" grade record? This action cannot be undone.')) {
+        document.getElementById('deleteForm').elements['delete_id'].value = id;
+        document.getElementById('deleteForm').submit();
+    }
+}
+
+// Close modal when clicking outside
+document.getElementById('addGradeModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+document.getElementById('editGradeModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && (document.getElementById('addGradeModal').classList.contains('show') || document
+            .getElementById('editGradeModal').classList.contains('show'))) {
+        closeModal();
     }
 });
 </script>

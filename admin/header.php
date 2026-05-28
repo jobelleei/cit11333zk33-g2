@@ -1,11 +1,6 @@
 <?php
 // ============================================================
 //  header.php
-//
-//  Each page must define BEFORE including this file:
-//    $active_page  — 'profile' | 'subjects' | 'grades'
-//    $page_title   — string shown in topbar
-//    $page_icon    — emoji shown beside the title
 // ============================================================
 ?>
 <!DOCTYPE html>
@@ -30,18 +25,18 @@
             <div class="school-badge">
                 <div class="brand-icon"><i class="bi bi-tencent-qq"></i></div>
                 <div class="brand-text">
-                    <span class="brand-name">CIT11333Z - Group 2</span>
+                    <span class="brand-name">CIT11333Z</span>
                     <span class="brand-sub">S.Y. 2025-2026</span>
                 </div>
             </div>
         </div>
 
-        <!-- Show the logged-in user's name from session -->
+        
         <div class="sidebar-profile">
             <div class="avatar"><img src="../src/assets/images/hiro-avatar.png" alt="Avatar"></div>
             <div class="profile-info">
-                <div class="name"><?= htmlspecialchars($_SESSION['user']['name']) ?></div>
-                <div class="id"><?= htmlspecialchars($_SESSION['user']['student_no']) ?></div>
+                <div class="name"><?= htmlspecialchars($_SESSION['user']['name'] ?? 'User') ?></div>
+                <div class="id"><?= htmlspecialchars($_SESSION['user']['id'] ?? 'N/A') ?></div>
             </div>
         </div>
 
@@ -64,7 +59,7 @@
 
         <div class="sidebar-footer">
             PHP Student Dashboard v2.0<br>
-            &copy; <?= date('Y') ?> CIT11333Z - Group 2 Midterm Project
+            &copy; <?= date('Y') ?> CIT11333Z Midterm Project
         </div>
     </aside>
 
@@ -73,12 +68,11 @@
         <header class="topbar">
             <div class="topbar-left">
                 <div class="page-title">
-                    <?= $page_icon ?> <?= htmlspecialchars($page_title) ?>
+                    <?= ($page_icon ?? '') ?> <?= htmlspecialchars($page_title ?? 'Dashboard') ?>
                 </div>
-                <div class="breadcrumb">Dashboard / <?= htmlspecialchars($page_title) ?></div>
+                <div class="breadcrumb">Dashboard / <?= htmlspecialchars($page_title ?? 'Dashboard') ?></div>
             </div>
             <span class="badge-pill"><?= date('F d, Y') ?></span>
         </header>
 
         <main class="content">
-<!-- ↓↓↓ PAGE CONTENT BELOW ↓↓↓ -->

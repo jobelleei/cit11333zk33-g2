@@ -1,90 +1,45 @@
 <?php
 require 'auth.php';
-require_once '../config.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/classes/Subject.php';
 
-$subjectModel = new Subject($conn);
-
+$subjectModel = new Subject();
 $success_message = '';
-$error_message = '';
-
-$user_id = $logged_in_user['id'] ?? null;
-
-if (!$user_id && isset($logged_in_user['username'])) {
-    $userModel = new User($conn);
-    $user = $userModel->findByUsername($logged_in_user['username']);
-    $user_id = $user['id'] ?? null;
-}
-
-if (!$user_id) {
-    header('Location: ../index.php');
-    exit;
-}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? 'add';
+    if (isset($_POST['action'])) {
+        $action = $_POST['action'];
 
-    if ($action === 'add') {
-        $new_code     = strtoupper(trim($_POST['code']));
-        $new_name     = trim($_POST['name']);
-        $new_teacher  = trim($_POST['teacher']);
-        $new_units    = (int) $_POST['units'];
-        $new_schedule = trim($_POST['schedule']);
-
-        try {
-            $subjectModel->create([
-                'user_id'  => $user_id,
-                'code'     => $new_code,
-                'name'     => $new_name,
-                'teacher'  => $new_teacher,
-                'units'    => $new_units,
-                'schedule' => $new_schedule,
-            ]);
-
-            $_SESSION['flash'] = "\"$new_name\" has been added to your subjects.";
-            header('Location: subjects.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Add failed: " . $e->getMessage();
+        if ($action === 'add') {
+            $data = [
+                'code' => strtoupper(trim($_POST['code'])),
+                'name' => trim($_POST['name']),
+                'teacher' => trim($_POST['teacher']),
+                'units' => (int) $_POST['units'],
+                'schedule' => trim($_POST['schedule']),
+                'status' => 'Active',
+            ];
+            $subjectModel->add($data);
+            $_SESSION['flash'] = '"' . $data['name'] . '" added successfully.';
+        } elseif ($action === 'edit') {
+            $edit_id = (int) $_POST['edit_id'];
+            $data = [
+                'code' => strtoupper(trim($_POST['code'])),
+                'name' => trim($_POST['name']),
+                'teacher' => trim($_POST['teacher']),
+                'units' => (int) $_POST['units'],
+                'schedule' => trim($_POST['schedule']),
+            ];
+            $subjectModel->update($edit_id, $data);
+            $_SESSION['flash'] = '"' . $data['name'] . '" updated successfully.';
+        } elseif ($action === 'delete') {
+            $delete_id = (int) $_POST['delete_id'];
+            $subjectModel->delete($delete_id);
+            $_SESSION['flash'] = 'Subject deleted successfully.';
         }
-    }
 
-    if ($action === 'edit') {
-        $edit_id       = (int) $_POST['subject_id'];
-        $edit_code     = strtoupper(trim($_POST['code']));
-        $edit_name     = trim($_POST['name']);
-        $edit_teacher  = trim($_POST['teacher']);
-        $edit_units    = (int) $_POST['units'];
-        $edit_schedule = trim($_POST['schedule']);
-
-        try {
-            $subjectModel->updateByUser($edit_id, $user_id, [
-                'code'     => $edit_code,
-                'name'     => $edit_name,
-                'teacher'  => $edit_teacher,
-                'units'    => $edit_units,
-                'schedule' => $edit_schedule,
-            ]);
-
-            $_SESSION['flash'] = "\"$edit_name\" has been updated.";
-            header('Location: subjects.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Update failed: " . $e->getMessage();
-        }
-    }
-
-    if ($action === 'delete') {
-        $delete_id = (int) $_POST['subject_id'];
-
-        try {
-            $subjectModel->deleteByUser($delete_id, $user_id);
-
-            $_SESSION['flash'] = "Subject has been deleted.";
-            header('Location: subjects.php');
-            exit;
-        } catch (PDOException $e) {
-            $error_message = "Delete failed: " . $e->getMessage();
-        }
+        header('Location: subjects.php');
+        exit;
     }
 }
 
@@ -93,27 +48,29 @@ if (isset($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-$subjects = $subjectModel->getAllByUser($user_id);
+// Pagination
+$perPage = 5;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$offset = ($page - 1) * $perPage;
 
-$total_subjects = count($subjects);
-$total_units    = array_sum(array_column($subjects, 'units'));
+$subjects = $subjectModel->getAll($perPage, $offset);
+$total_subjects = $subjectModel->countAll();
+$stats = $subjectModel->stats();
+$total_units = (int) ($stats['total_units'] ?? array_sum(array_column($subjects, 'units')));
 
+
+// ----------------------------------------------------------
+// PAGE TITLES
+// ----------------------------------------------------------
 $active_page = 'subjects';
 $page_title  = 'Subjects';
 $page_icon   = '<i class="bi bi-journal-text"></i>';
 
 include 'header.php';
 ?>
-
 <main class="content">
-    <?php if ($success_message): ?>
-    <div class="alert-success">✅ <?= htmlspecialchars($success_message) ?></div>
-    <?php endif; ?>
-
-    <?php if ($error_message): ?>
-    <div class="alert-success" style="background:#fee2e2; color:#991b1b;">
-        <?= htmlspecialchars($error_message) ?>
-    </div>
+    <?php if (!empty($success_message)): ?>
+    <div class="alert-success"> <?= htmlspecialchars($success_message) ?></div>
     <?php endif; ?>
 
     <div class="stats-row">
@@ -127,57 +84,16 @@ include 'header.php';
         </div>
     </div>
 
-    <div class="form-card">
-        <div class="form-card-header">
-            <div class="form-card-title">Add New Subject</div>
-        </div>
-        <div class="form-body">
-            <form method="POST" action="">
-                <input type="hidden" name="action" value="add">
-
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label for="code">Subject Code</label>
-                        <input type="text" id="code" name="code" placeholder="e.g. MATH102" required maxlength="20">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="name">Subject Name</label>
-                        <input type="text" id="name" name="name" placeholder="e.g. Statistics and Probability" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="teacher">Teacher</label>
-                        <input type="text" id="teacher" name="teacher" placeholder="e.g. Ms. Cruz" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="units">Units</label>
-                        <select id="units" name="units" required>
-                            <option value="">— Select —</option>
-                            <option value="1">1 unit</option>
-                            <option value="2">2 units</option>
-                            <option value="3">3 units</option>
-                            <option value="4">4 units</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="schedule">Schedule</label>
-                        <input type="text" id="schedule" name="schedule" placeholder="e.g. MWF 7:30–8:30" required>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn-submit"><i class="bi bi-plus-square"></i> Add Subject</button>
-            </form>
-        </div>
+    <div style="margin-bottom: 24px;">
+        <button type="button" class="btn-add" onclick="openModal()">
+            <i class="bi bi-plus-square"></i> Add Subject
+        </button>
     </div>
 
     <div class="table-card">
         <div class="table-card-header">
             <div class="table-card-title">Enrolled Subjects</div>
         </div>
-
         <table class="data-table">
             <thead>
                 <tr>
@@ -190,7 +106,6 @@ include 'header.php';
                     <th>Actions</th>
                 </tr>
             </thead>
-
             <tbody>
                 <?php if ($total_subjects === 0): ?>
                 <tr>
@@ -202,26 +117,23 @@ include 'header.php';
 
                 <?php foreach ($subjects as $i => $subject): ?>
                 <tr>
-                    <td class="id-cell"><?= $i + 1 ?></td>
+                    <td class="id-cell"><?= $offset + $i + 1 ?></td>
                     <td class="code-cell"><?= htmlspecialchars($subject['code']) ?></td>
                     <td><?= htmlspecialchars($subject['name']) ?></td>
                     <td><?= htmlspecialchars($subject['teacher']) ?></td>
-                    <td class="id-cell"><?= htmlspecialchars($subject['units']) ?> units</td>
+                    <td class="id-cell"><?= $subject['units'] ?> units</td>
                     <td class="schedule-tag"><?= htmlspecialchars($subject['schedule']) ?></td>
                     <td>
-                        <button type="button" class="btn-submit" style="width:auto; padding:8px 14px; margin-right:5px;"
-                            onclick='openEditSubjectModal(<?= json_encode($subject) ?>)'>
-                            Edit
-                        </button>
-
-                        <form method="POST" action="" style="display:inline;"
-                            onsubmit="return confirm('Are you sure you want to delete this subject?');">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="subject_id" value="<?= htmlspecialchars($subject['id']) ?>">
-                            <button type="submit" class="btn-submit" style="width:auto; padding:8px 14px;">
-                                Delete
+                        <div class="action-buttons">
+                            <button type="button" class="btn-action btn-edit"
+                                onclick="editSubject(<?= $subject['id'] ?>)">
+                                <i class="bi bi-pencil"></i>
                             </button>
-                        </form>
+                            <button type="button" class="btn-action btn-delete"
+                                onclick="deleteSubject(<?= $subject['id'] ?>, '<?= htmlspecialchars($subject['name']) ?>')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -229,112 +141,174 @@ include 'header.php';
         </table>
     </div>
 
-    <div id="editSubjectModal" class="custom-modal">
-        <div class="custom-modal-content">
-            <div class="custom-modal-header">
-                <div class="form-card-title">Edit Subject</div>
-                <button type="button" class="custom-modal-close" onclick="closeEditSubjectModal()">&times;</button>
+    <!-- Pagination / Limit to 5 -->
+    <?php if ($total_subjects > $perPage):
+        $totalPages = (int) ceil($total_subjects / $perPage);
+    ?>
+    <div class="pagination">
+        <?php if ($page > 1): ?>
+        <a class="page-link" href="?page=<?= $page - 1 ?>">&laquo; Prev</a>
+        <?php endif; ?>
+
+        <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+        <?php if ($p === $page): ?>
+        <span class="page-link current"><?= $p ?></span>
+        <?php else: ?>
+        <a class="page-link" href="?page=<?= $p ?>"><?= $p ?></a>
+        <?php endif; ?>
+        <?php endfor; ?>
+
+        <?php if ($page < $totalPages): ?>
+        <a class="page-link" href="?page=<?= $page + 1 ?>">Next &raquo;</a>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <form id="deleteForm" method="POST" action="" style="display: none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="delete_id" value="">
+    </form>
+
+    <!-- Add Subject Modal -->
+    <div id="addSubjectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New Subject</h2>
+                <button type="button" class="modal-close" onclick="closeModal()">&times;</button>
             </div>
+            <div class="modal-body">
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="add">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="code">Subject Code</label>
+                            <input type="text" id="code" name="code" placeholder="e.g. MATH102" required maxlength="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="name">Subject Name</label>
+                            <input type="text" id="name" name="name" placeholder="e.g. Statistics and Probability"
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="teacher">Teacher</label>
+                            <input type="text" id="teacher" name="teacher" placeholder="e.g. Ms. Cruz" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="units">Units</label>
+                            <select id="units" name="units" required>
+                                <option value="">— Select —</option>
+                                <option value="1">1 unit</option>
+                                <option value="2">2 units</option>
+                                <option value="3">3 units</option>
+                                <option value="4">4 units</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="schedule">Schedule</label>
+                            <input type="text" id="schedule" name="schedule" placeholder="e.g. MWF 7:30–8:30" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-submit"><i class="bi bi-plus-square"></i> Add Subject</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
 
-            <form method="POST" action="">
+<!-- Edit Subject Modal -->
+<div id="editSubjectModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Edit Subject</h2>
+            <button type="button" class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form method="POST" action="" id="editForm">
                 <input type="hidden" name="action" value="edit">
-                <input type="hidden" id="edit_subject_id" name="subject_id">
-
+                <input type="hidden" name="edit_id" id="edit_id">
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="edit_code">Subject Code</label>
-                        <input type="text" id="edit_code" name="code" required maxlength="20">
+                        <input type="text" id="edit_code" name="code" placeholder="e.g. MATH102" required
+                            maxlength="10">
                     </div>
-
                     <div class="form-group">
                         <label for="edit_name">Subject Name</label>
-                        <input type="text" id="edit_name" name="name" required>
+                        <input type="text" id="edit_name" name="name" placeholder="e.g. Statistics and Probability"
+                            required>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_teacher">Teacher</label>
-                        <input type="text" id="edit_teacher" name="teacher" required>
+                        <input type="text" id="edit_teacher" name="teacher" placeholder="e.g. Ms. Cruz" required>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_units">Units</label>
                         <select id="edit_units" name="units" required>
-                            <option value="">— Select —</option>
                             <option value="1">1 unit</option>
                             <option value="2">2 units</option>
                             <option value="3">3 units</option>
                             <option value="4">4 units</option>
                         </select>
                     </div>
-
                     <div class="form-group">
                         <label for="edit_schedule">Schedule</label>
-                        <input type="text" id="edit_schedule" name="schedule" required>
+                        <input type="text" id="edit_schedule" name="schedule" placeholder="e.g. MWF 7:30–8:30" required>
                     </div>
                 </div>
-
-                <button type="submit" class="btn-submit"><i class="bi bi-pencil-square"></i> Update Subject</button>
+                <button type="submit" class="btn-submit"><i class="bi bi-check-circle"></i> Update Subject</button>
             </form>
         </div>
     </div>
-</main>
-
-<style>
-.custom-modal {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-
-.custom-modal-content {
-    background: #fff;
-    width: 100%;
-    max-width: 700px;
-    border-radius: 16px;
-    padding: 20px;
-}
-
-.custom-modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.custom-modal-close {
-    border: none;
-    background: transparent;
-    font-size: 28px;
-    cursor: pointer;
-}
-</style>
+</div>
 
 <script>
-function openEditSubjectModal(subject) {
-    document.getElementById('edit_subject_id').value = subject.id;
-    document.getElementById('edit_code').value = subject.code;
-    document.getElementById('edit_name').value = subject.name;
-    document.getElementById('edit_teacher').value = subject.teacher;
-    document.getElementById('edit_units').value = subject.units;
-    document.getElementById('edit_schedule').value = subject.schedule;
-
-    document.getElementById('editSubjectModal').style.display = 'flex';
+function openModal() {
+    document.getElementById('addSubjectModal').classList.add('show');
 }
 
-function closeEditSubjectModal() {
-    document.getElementById('editSubjectModal').style.display = 'none';
+function closeModal() {
+    document.getElementById('addSubjectModal').classList.remove('show');
+    document.getElementById('editSubjectModal').classList.remove('show');
 }
 
-window.addEventListener('click', function(event) {
-    const modal = document.getElementById('editSubjectModal');
+function editSubject(id) {
+    <?php foreach ($subjects as $subject): ?>
+    if (<?= $subject['id'] ?> === id) {
+        document.getElementById('edit_id').value = '<?= $subject['id'] ?>';
+        document.getElementById('edit_code').value = '<?= htmlspecialchars($subject['code']) ?>';
+        document.getElementById('edit_name').value = '<?= htmlspecialchars($subject['name']) ?>';
+        document.getElementById('edit_teacher').value = '<?= htmlspecialchars($subject['teacher']) ?>';
+        document.getElementById('edit_units').value = '<?= $subject['units'] ?>';
+        document.getElementById('edit_schedule').value = '<?= htmlspecialchars($subject['schedule']) ?>';
+    }
+    <?php endforeach; ?>
 
-    if (event.target === modal) {
-        closeEditSubjectModal();
+    document.getElementById('editSubjectModal').classList.add('show');
+}
+
+function deleteSubject(id, name) {
+    if (confirm('Are you sure you want to delete "' + name + '"? This action cannot be undone.')) {
+        document.getElementById('deleteForm').elements['delete_id'].value = id;
+        document.getElementById('deleteForm').submit();
+    }
+}
+
+document.getElementById('addSubjectModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+document.getElementById('editSubjectModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && (document.getElementById('addSubjectModal').classList.contains('show') || document
+            .getElementById('editSubjectModal').classList.contains('show'))) {
+        closeModal();
     }
 });
 </script>
