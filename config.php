@@ -26,8 +26,8 @@ if ($isLocal) {
     $config = [
         'host'     => 'sql101.infinityfree.com', 
         'dbname'   => 'if0_42030424_students_db',    
-        'username' => 'if0_42030424',                
-        'password' => 'citgroup2',      // <-- REPLACE THIS with your vPanel password (see guide below)
+        'username' => 'if0_42034321',                
+        'password' => 'W0hNTou5zsFv',      // <-- REPLACE THIS with your vPanel password (see guide below)
     ];
 }
 
